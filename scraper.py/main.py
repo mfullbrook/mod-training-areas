@@ -2,6 +2,7 @@ import requests
 from lxml import html
 from collections import namedtuple
 import re
+import boto3
 
 months = 'January|February|March|April|May|June|July|August|September|October|November|December'
 pageLinkRe = re.compile(rf'^(.+) (firing times|closure times) ({months}) (\d{{4}})(?: \(updated (.+)\))?')
@@ -27,8 +28,28 @@ def read_guidance_index(url):
     return map(link_extractor, links)
 
 
-if __name__ == '__main__':
+def closure_times(page):
+    print("Closure:" + page.name)
+
+
+def lambda_handler(event, context):
+    dynamodb = boto3.resource('dynamodb')
+    locations_table = dynamodb.Table('InfrastructureStack-LocationsTable963AECFA-180XYBG240JGV')
+    """ :type : pyboto3.dynamodb """
     pages = read_guidance_index('https://www.gov.uk/government/publications/south-east-training-estate-firing-times')
+
     for page in pages:
-        print(page.name)
-        
+        locations_table.put_item(
+            Item={
+                'locationId': page.name,
+                'type': page.type,
+            }
+        )
+        print(page)
+        if page.type == 'closure times':
+            closure_times(page)
+
+# http://www.jramoyo.com/2017/03/upserting-items-into-dynamodb.html
+
+if __name__ == '__main__':
+    lambda_handler(None, None)

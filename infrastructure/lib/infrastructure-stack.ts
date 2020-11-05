@@ -24,22 +24,22 @@ export class InfrastructureStack extends cdk.Stack {
     this.locationsTable = new dynamodb.Table(this, 'LocationsTable', {
       // tableName: 'locations',
       partitionKey: {
-        name: 'locationId', type: dynamodb.AttributeType.STRING,
+        name: 'id', type: dynamodb.AttributeType.STRING,
       }
     })
 
     this.monthsTable = new dynamodb.Table(this, 'MonthsTable', {
       // tableName: 'months',
       partitionKey: { name: 'locationId', type: dynamodb.AttributeType.STRING },
-      sortKey: { name: 'month', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'date', type: dynamodb.AttributeType.STRING },
     })
   }
 
   createScraperLambda() {
     this.scraperLambda = new lambda.Function(this, 'ScraperHandler', {
       runtime: lambda.Runtime.PYTHON_3_8,
-      code: lambda.Code.fromAsset('../scraper'),
-      handler: 'main.lambda_handler'
+      code: lambda.Code.fromAsset('../scraper.js/.aws-sam/package.zip'),
+      handler: 'compiled/scraper.scraperHandler'
     })
 
     this.locationsTable.grantReadWriteData(this.scraperLambda);
@@ -57,12 +57,37 @@ export class InfrastructureStack extends cdk.Stack {
 
   frontendUser() {
     // create a user for the frontend to fetch data
+    const user = new iam.User(this, 'FrontendUser')
+    const accessKey = new iam.CfnAccessKey(this, 'FrontendUserAccessKey', {
+      userName: user.userName
+    })
 
-    // output the credentials
-
+    // Output the credentials
+    new cdk.CfnOutput(this, 'AccessKeyId', {
+      description: 'Frontend User Access Key ID',
+      value: accessKey.ref,
+    })
+    new cdk.CfnOutput(this, 'AccessKeySecret', {
+      description: 'Frontend User Access Key Secret',
+      value: accessKey.attrSecretAccessKey,
+    })
+    
     // create a policy to access the dynamo db tables
+    const policy = new iam.Policy(this, 'FrontendUserPolicy')
+    policy.addStatements(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        "dynamodb:BatchGet*",
+        "dynamodb:DescribeTable",
+        "dynamodb:Get*",
+        "dynamodb:Query",
+        "dynamodb:Scan",
+      ],
+      resources: [this.monthsTable.tableArn, this.locationsTable.tableArn]
+    }))
 
-    // assign the policy to the user
+    // attach the policy to the user
+    policy.attachToUser(user)
 
   }
 }
